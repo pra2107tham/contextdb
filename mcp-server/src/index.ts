@@ -54,7 +54,7 @@ app.get('/sse', (req: express.Request, res: express.Response, next: express.Next
     query: req.query,
   })
   next()
-}, checkJwt, handleAuthError, async (req: express.Request, res: express.Response) => {
+}, checkJwt, async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   try {
     const transport = new SSEServerTransport('/messages', res)
     const sessionId = transport.sessionId
@@ -110,6 +110,9 @@ app.post('/messages', async (req, res) => {
     }
   }
 })
+
+// Error handling middleware (must be registered after routes)
+app.use(handleAuthError)
 
 const PORT = config.port
 app.listen(PORT, (error?: unknown) => {
