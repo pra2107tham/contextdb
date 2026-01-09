@@ -26,6 +26,18 @@ This guide will walk you through setting up Auth0 for OAuth 2.1 authentication w
    - **Signing Algorithm**: `RS256` (default)
 4. Click "Create"
 
+**CRITICAL: Ensure JWT Access Tokens are Enabled**
+
+After creating the API, verify these settings:
+
+1. In your API settings, go to the **Settings** tab
+2. Scroll down to **"Token Endpoint Authentication Method"**
+3. Ensure **"Enable JWT Access Tokens"** is checked/enabled (this should be the default)
+4. The API should issue **signed JWT tokens (JWS)**, NOT opaque tokens or encrypted tokens (JWE)
+5. Click "Save" if you made any changes
+
+**Why this matters:** The MCP server uses `express-oauth2-jwt-bearer` which only validates **signed JWT tokens (JWS)**. If Auth0 issues encrypted tokens (JWE) or opaque tokens, validation will fail with "Invalid Compact JWS" error.
+
 ## Step 4: Enable Dynamic Client Registration (DCR)
 
 1. In your API settings, scroll to "Settings"
@@ -151,26 +163,41 @@ This error occurs because dynamically registered clients are third-party applica
 
 ### "Invalid Compact JWS" Error
 
-This error means the token Claude is sending is not a valid JWT. Possible causes:
+This error means the token Claude is sending is not a valid **signed JWT (JWS)**. The most common cause is that Auth0 is issuing **encrypted JWT tokens (JWE)** instead of signed tokens.
 
-1. **Auth0 API not configured for JWT tokens:**
-   - Go to **Applications** → **APIs** → Your API
-   - Ensure **"Enable JWT Access Tokens"** is enabled (should be default)
-   - If using opaque tokens, switch to JWT tokens
+**Symptoms:**
+- Token starts with `eyJhbGciOiJkaXIiLCJlbmM...` (decodes to `{"alg":"dir","enc...`)
+- Error message: "Invalid Compact JWS"
+- Token has `alg: "dir"` and `enc` fields (indicates JWE, not JWS)
 
-2. **Token from wrong issuer:**
+**Solution:**
+
+1. **Verify Auth0 API Configuration:**
+   - Go to **Applications** → **APIs** → Your API → **Settings**
+   - Ensure **"Enable JWT Access Tokens"** is checked
+   - Verify **"Signing Algorithm"** is set to `RS256` (not `HS256` or `none`)
+   - The API must issue **signed JWT tokens (JWS)**, NOT encrypted tokens (JWE)
+
+2. **Check Token Type:**
+   - Decode the token Claude is sending (first part before the first dot)
+   - If it contains `"alg":"dir"` and `"enc"`, it's a JWE (encrypted) - this is wrong
+   - If it contains `"alg":"RS256"` and `"typ":"JWT"`, it's a JWS (signed) - this is correct
+
+3. **If Auth0 is issuing JWE tokens:**
+   - This might be due to Auth0 tenant settings or API configuration
+   - Try recreating the API with explicit JWT token settings
+   - Contact Auth0 support if the issue persists
+
+4. **Verify Token Claims:**
    - Check the token's `iss` claim matches your Auth0 issuer base URL
-   - Verify Claude is using the correct authorization server
-
-3. **Malformed token:**
-   - Check server logs for detailed token structure
-   - Verify token has 3 parts (header.payload.signature)
+   - Verify `aud` claim matches your API identifier (`https://contextdb.tech`)
    - Ensure token is sent as `Bearer <token>` in Authorization header
 
 **To debug:**
-- Check MCP server logs for detailed token information
+- Check MCP server logs for detailed token structure information
+- Decode the JWT header: `echo "TOKEN_PART" | base64url -d | jq`
 - Verify Auth0 API settings match your environment variables
-- Test token manually using Auth0's token endpoint
+- Test token manually using Auth0's token endpoint and check the response
 
 ## Free Tier Limits
 

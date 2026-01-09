@@ -442,8 +442,13 @@ app.use(
             // Decode header and payload (base64url)
             const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString())
             const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString())
+            
+            // Check if this is a JWE (encrypted) token instead of JWS (signed)
+            const isJWE = header.enc !== undefined || header.alg === 'dir' || header.alg?.startsWith('A')
+            const isJWS = header.typ === 'JWT' && (header.alg === 'RS256' || header.alg === 'HS256' || header.alg === 'ES256')
+            
             tokenInfo = {
-              header: { alg: header.alg, typ: header.typ, kid: header.kid },
+              header: { alg: header.alg, typ: header.typ, kid: header.kid, enc: header.enc },
               payload: {
                 iss: payload.iss,
                 aud: payload.aud,
@@ -451,10 +456,12 @@ app.use(
                 exp: payload.exp,
                 iat: payload.iat,
               },
+              tokenType: isJWE ? 'JWE (encrypted) - NOT SUPPORTED' : isJWS ? 'JWS (signed) - SUPPORTED' : 'Unknown',
               expectedIssuer: config.auth0.issuerBaseURL,
               expectedAudience: config.auth0.audience,
               issuerMatch: payload.iss === config.auth0.issuerBaseURL,
               audienceMatch: payload.aud === config.auth0.audience || (Array.isArray(payload.aud) && payload.aud.includes(config.auth0.audience)),
+              issue: isJWE ? 'Auth0 is issuing encrypted JWT (JWE) tokens. Configure Auth0 API to issue signed JWT (JWS) tokens with RS256 algorithm.' : null,
             }
           } else {
             tokenInfo = { error: 'Token is not a JWT (does not have 3 parts)' }
