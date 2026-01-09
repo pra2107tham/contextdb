@@ -44,9 +44,51 @@ This guide will walk you through setting up Auth0 for OAuth 2.1 authentication w
 3. Click "Add" for each scope
 4. Click "Save"
 
+## Step 6: Promote Connections to Domain Level (REQUIRED for DCR)
+
+**Important:** Dynamically registered clients (like Claude) are considered "third-party applications" and can **only** use connections that are promoted to domain level. This is why you're getting the "no connections enabled for the client" error.
+
+### Option A: Using Auth0 Dashboard (Easier)
+
+1. Go to **Authentication** → **Connections**
+2. For each connection you want to use (Database, Google, etc.):
+   - Click on the connection name
+   - Go to the **Settings** tab
+   - Scroll down to find **"Promote Connection to Domain Level"** or **"Domain Connection"**
+   - Toggle it **ON** (or check the box)
+   - Click **"Save"**
+
+### Option B: Using Management API (If Dashboard Option Not Available)
+
+If you can't find the option in the dashboard, use the Management API:
+
+1. **Get your Management API token:**
+   - Go to **Applications** → **APIs** → **Auth0 Management API**
+   - Go to **Machine to Machine Applications** tab
+   - Authorize your application (or create a new M2M app)
+   - Grant `update:connections` scope
+   - Copy the access token
+
+2. **Get your Connection IDs:**
+   ```bash
+   curl -X GET "https://contextdb.us.auth0.com/api/v2/connections" \
+     -H "Authorization: Bearer YOUR_MGMT_API_TOKEN"
+   ```
+   Look for connection IDs like `con_xxxxxxxxxxxxx` for Database, Google, etc.
+
+3. **Promote each connection to domain level:**
+   ```bash
+   curl -X PATCH "https://contextdb.us.auth0.com/api/v2/connections/CONNECTION_ID" \
+     -H "Authorization: Bearer YOUR_MGMT_API_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"is_domain_connection": true}'
+   ```
+
+   Replace `CONNECTION_ID` with each connection ID you want to promote.
+
 > **Note:** APIs in Auth0 don't have callback URLs. With Dynamic Client Registration enabled, Claude.ai will dynamically register as a client and handle its own callback URLs during the OAuth flow.
 
-## Step 6: Get Auth0 Credentials
+## Step 7: Get Auth0 Credentials
 
 1. Go to **Applications** → **APIs** → Your API
 2. Note these values:
@@ -59,7 +101,7 @@ This guide will walk you through setting up Auth0 for OAuth 2.1 authentication w
    - `AUTH0_AUDIENCE=https://contextdb.tech`
    - `AUTH0_ISSUER_BASE_URL=https://your-tenant.auth0.com`
 
-## Step 7: Test OAuth Discovery Endpoint
+## Step 8: Test OAuth Discovery Endpoint
 
 Once your MCP server is running, test the discovery endpoint:
 
@@ -87,6 +129,19 @@ You should see:
 - With Dynamic Client Registration, Claude.ai handles callback URLs automatically
 - No callback URL configuration is needed in Auth0 for APIs
 - If you encounter redirect errors, verify DCR is enabled and scopes are configured correctly
+
+### "No Connections Enabled for the Client" Error
+
+This error occurs because dynamically registered clients are third-party applications and can only use **domain-level connections**.
+
+**Solution:**
+1. Go to **Authentication** → **Connections**
+2. For each connection you want to use, promote it to domain level (see Step 6 above)
+3. After promoting connections, try connecting Claude again
+
+**Verify connections are domain-level:**
+- In the Connections list, domain-level connections will show a special indicator
+- Or check via API: `GET /api/v2/connections` - look for `"is_domain_connection": true`
 
 ### Token Validation Issues
 
