@@ -183,10 +183,42 @@ This error means the token Claude is sending is not a valid **signed JWT (JWS)**
    - If it contains `"alg":"dir"` and `"enc"`, it's a JWE (encrypted) - this is wrong
    - If it contains `"alg":"RS256"` and `"typ":"JWT"`, it's a JWS (signed) - this is correct
 
-3. **If Auth0 is issuing JWE tokens:**
-   - This might be due to Auth0 tenant settings or API configuration
-   - Try recreating the API with explicit JWT token settings
-   - Contact Auth0 support if the issue persists
+3. **If Auth0 is issuing JWE tokens even when encryption is disabled:**
+
+   **Check these settings:**
+   
+   a. **Verify API Settings:**
+      - Go to **Applications** → **APIs** → Your API → **Settings**
+      - Ensure **"Enable JWT Access Tokens"** is checked
+      - Ensure **"Encrypt the signed access_token"** is **UNCHECKED** (disabled)
+      - Verify **"Signing Algorithm"** is `RS256`
+      - Click **"Save"** even if nothing changed
+   
+   b. **Check for Auth0 Actions:**
+      - Go to **Actions** → **Flows** → **Login**
+      - Check if any Actions are modifying tokens or forcing encryption
+      - Temporarily disable Actions to test
+   
+   c. **Check Tenant Settings:**
+      - Go to **Settings** → **Advanced** → **OAuth**
+      - Look for any tenant-level token encryption policies
+      - Check if there are any organization-level policies
+   
+   d. **Test Token Manually:**
+      - Use Auth0's token endpoint to get a test token
+      - Decode the token header to verify it's JWS (signed) not JWE (encrypted)
+      - If test token is JWS but Claude's token is JWE, the issue is in the OAuth flow
+   
+   e. **Recreate the API (Last Resort):**
+      - Delete the existing API
+      - Create a new API with the same identifier
+      - Ensure JWT Access Tokens are enabled and encryption is disabled
+      - Re-enable DCR and configure scopes
+   
+   f. **Check Dynamic Client Registration:**
+      - When Claude registers via DCR, it might be requesting encrypted tokens
+      - Check the DCR registration request in Auth0 logs
+      - Verify Claude isn't requesting `token_endpoint_auth_method` that forces encryption
 
 4. **Verify Token Claims:**
    - Check the token's `iss` claim matches your Auth0 issuer base URL
