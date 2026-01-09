@@ -5,6 +5,7 @@ import { config } from './config'
 import { checkJwt } from './auth'
 import { createContextDbServer } from './mcpServer'
 import { InvalidRequestError, UnauthorizedError } from 'express-oauth2-jwt-bearer'
+import { syncAuth0UserToSupabase } from './auth/userSync'
 
 // Import MCP SDK transports using require with resolved path since subpath exports aren't available
 // require.resolve resolves to dist/cjs/package.json, so we go up 2 levels to get to SDK root
@@ -221,14 +222,33 @@ app.post(
   },
   // Authentication middleware
   checkJwt,
-  // Log AFTER successful authentication
-  (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // Log AFTER successful authentication and sync user
+  async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const auth: any = (req as any).auth
-    console.log('✅ [MCP ENDPOINT] Authentication successful:', {
-      userId: auth?.payload?.sub || 'unknown',
-      audience: auth?.payload?.aud || 'unknown',
-      timestamp: new Date().toISOString(),
-    })
+    const auth0Sub = auth?.payload?.sub as string | undefined
+    const auth0Email = auth?.payload?.email as string | undefined
+    const auth0Name = auth?.payload?.name as string | undefined
+
+    // Sync Auth0 user to Supabase and store Supabase user ID in request
+    if (auth0Sub) {
+      const supabaseUserId = await syncAuth0UserToSupabase(
+        auth0Sub,
+        auth0Email,
+        auth0Name,
+      )
+      if (supabaseUserId) {
+        // Store Supabase user ID in request for tool handlers to use
+        ;(req as any).supabaseUserId = supabaseUserId
+        console.log('✅ [MCP ENDPOINT] Authentication successful:', {
+          auth0Sub,
+          supabaseUserId,
+          audience: auth?.payload?.aud || 'unknown',
+          timestamp: new Date().toISOString(),
+        })
+      } else {
+        console.error(`Failed to sync Auth0 user ${auth0Sub} to Supabase`)
+      }
+    }
     next()
   },
   async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -239,12 +259,13 @@ app.post(
         enableJsonResponse: true,
       })
 
+      // Get Supabase user ID from request (set by previous middleware)
+      const supabaseUserId = (req as any).supabaseUserId
+
       // Connect our MCP server to the transport
       const server = createContextDbServer(() => {
-        // For HTTP transport, we don't use session-based mapping, instead
-        // we rely on req.auth from checkJwt middleware inside tool handlers if needed.
-        // For now, tools use the Auth0 subject from SSE sessions only.
-        return undefined
+        // For HTTP transport, return Supabase user ID directly
+        return supabaseUserId
       })
 
       // Handle the HTTP request via MCP transport
@@ -274,11 +295,29 @@ app.get('/sse', (req: express.Request, res: express.Response, next: express.Next
     const sessionId = transport.sessionId
     transports[sessionId] = transport
 
-    // Capture user id from Auth0 token (sub claim)
+    // Capture Auth0 user info and sync to Supabase
     const auth: any = (req as any).auth
-    const userId = auth?.payload?.sub as string | undefined
-    if (userId) {
-      sessionUserIds[sessionId] = userId
+    const auth0Sub = auth?.payload?.sub as string | undefined
+    const auth0Email = auth?.payload?.email as string | undefined
+    const auth0Name = auth?.payload?.name as string | undefined
+
+    if (auth0Sub) {
+      // Sync Auth0 user to Supabase and get Supabase user ID
+      const supabaseUserId = await syncAuth0UserToSupabase(
+        auth0Sub,
+        auth0Email,
+        auth0Name,
+      )
+
+      if (supabaseUserId) {
+        // Store Supabase user ID (not Auth0 sub) for this session
+        sessionUserIds[sessionId] = supabaseUserId
+        console.log(
+          `Synced Auth0 user ${auth0Sub} to Supabase user ${supabaseUserId} for session ${sessionId}`,
+        )
+      } else {
+        console.error(`Failed to sync Auth0 user ${auth0Sub} to Supabase`)
+      }
     }
 
     transport.onclose = () => {
