@@ -82,6 +82,26 @@ app.get('/.well-known/oauth-protected-resource', (req, res) => {
   res.json(response)
 })
 
+// Resource-specific OAuth discovery endpoint
+// Claude may query /.well-known/oauth-protected-resource/mcp for resource-specific config
+app.get('/.well-known/oauth-protected-resource/:resource', (req, res) => {
+  console.log('🔍 [OAUTH DISCOVERY] Resource-specific request received:', {
+    resource: req.params.resource,
+    userAgent: req.headers['user-agent'],
+    timestamp: new Date().toISOString(),
+  })
+  
+  // Return same response as base discovery endpoint
+  const response = {
+    authorization_servers: [config.auth0.issuerBaseURL],
+    registration_endpoint: `${config.auth0.issuerBaseURL}/oidc/register`,
+  }
+  
+  console.log('🔍 [OAUTH DISCOVERY] Sending resource-specific response:', response)
+  res.setHeader('Content-Type', 'application/json')
+  res.json(response)
+})
+
 // OAuth Authorization Server Metadata endpoint (RFC 8414)
 // Claude queries this to get OAuth server configuration
 app.get('/.well-known/oauth-authorization-server', (req, res) => {
@@ -165,6 +185,23 @@ app.post('/register', async (req, res) => {
       error_description: 'Failed to register client with Auth0',
     })
   }
+})
+
+// Handle GET requests to /mcp (Claude may check endpoint availability)
+app.get('/mcp', (req: express.Request, res: express.Response) => {
+  console.log('📨 [MCP ENDPOINT] GET request received:', {
+    hasAuthHeader: !!req.headers.authorization,
+    timestamp: new Date().toISOString(),
+  })
+  
+  // Return endpoint information without requiring auth
+  res.json({
+    endpoint: '/mcp',
+    method: 'POST',
+    transport: 'streamable-http',
+    authentication: 'oauth2',
+    authorization_server: config.auth0.issuerBaseURL,
+  })
 })
 
 // HTTP-based MCP endpoint (preferred for Claude) using Streamable HTTP transport
@@ -324,13 +361,15 @@ app.use(
             res.setHeader(key, value)
             responseHeaders[key] = value
           })
-        } else {
-          // Fallback: set WWW-Authenticate header if library didn't
-          const authUrl = `${config.auth0.issuerBaseURL}/authorize`
-          const wwwAuth = `Bearer realm="${config.auth0.issuerBaseURL}", authorization_uri="${authUrl}"`
-          res.setHeader('WWW-Authenticate', wwwAuth)
-          responseHeaders['WWW-Authenticate'] = wwwAuth
         }
+        
+        // Always set WWW-Authenticate header with proper authorization server info
+        // This helps Claude know where to authenticate
+        const authUrl = `${config.auth0.issuerBaseURL}/authorize`
+        const tokenUrl = `${config.auth0.issuerBaseURL}/oauth/token`
+        const wwwAuth = `Bearer realm="${config.auth0.issuerBaseURL}", authorization_uri="${authUrl}", token_uri="${tokenUrl}", scope="contextdb:read contextdb:write"`
+        res.setHeader('WWW-Authenticate', wwwAuth)
+        responseHeaders['WWW-Authenticate'] = wwwAuth
         
         const errorResponse = {
           error: err instanceof InvalidRequestError ? 'invalid_request' : 'invalid_token',
