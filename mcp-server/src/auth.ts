@@ -23,10 +23,16 @@ export const handleAuthError = (
       authorizationHeader: req.headers.authorization ? 'present' : 'missing',
       queryParams: Object.keys(req.query),
     })
-    return res.status(err.status || 400).json({
-      error: 'InvalidRequest',
-      message: err.message,
-      code: (err as any).code,
+    
+    // Return 401 with WWW-Authenticate header pointing to Auth0
+    // This tells Claude where to authenticate
+    const authUrl = `${config.auth0.issuerBaseURL}/authorize`
+    res.setHeader('WWW-Authenticate', `Bearer realm="${config.auth0.issuerBaseURL}", authorization_uri="${authUrl}"`)
+    
+    return res.status(401).json({
+      error: 'invalid_request',
+      error_description: 'Missing or invalid access token. Please complete OAuth flow.',
+      authorization_uri: authUrl,
     })
   }
   if (err instanceof UnauthorizedError) {
@@ -35,9 +41,15 @@ export const handleAuthError = (
       status: err.status,
       authorizationHeader: req.headers.authorization ? 'present' : 'missing',
     })
+    
+    // Return 401 with WWW-Authenticate header
+    const authUrl = `${config.auth0.issuerBaseURL}/authorize`
+    res.setHeader('WWW-Authenticate', `Bearer realm="${config.auth0.issuerBaseURL}", authorization_uri="${authUrl}"`)
+    
     return res.status(err.status || 401).json({
-      error: 'Unauthorized',
-      message: err.message,
+      error: 'invalid_token',
+      error_description: err.message || 'Invalid or expired access token',
+      authorization_uri: authUrl,
     })
   }
   next(err)
