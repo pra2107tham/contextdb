@@ -1,5 +1,5 @@
+import express from 'express'
 import cors from 'cors'
-import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express'
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse'
 import { config } from './config'
 import { checkJwt } from './auth'
@@ -15,7 +15,8 @@ function getUserIdForSession(sessionId?: string): string | undefined {
   return sessionUserIds[sessionId]
 }
 
-const app = createMcpExpressApp({ host: '0.0.0.0' })
+const app = express()
+app.use(express.json())
 
 // Basic CORS (can be tightened later)
 app.use(
