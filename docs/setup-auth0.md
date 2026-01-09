@@ -102,13 +102,34 @@ If you can't find the option in the dashboard, use the Management API:
 
 ## Step 7: Set Default Audience (CRITICAL for JWT Tokens)
 
-**This is critical!** If the `audience` parameter is missing or incorrect, Auth0 will issue encrypted JWT tokens (JWE) instead of signed JWT tokens (JWS).
+**This is critical!** If the `audience` parameter is missing or incorrect, Auth0 will issue encrypted JWT tokens (JWE) or opaque tokens instead of signed JWT tokens (JWS).
 
-1. Go to **Settings** → **API Authorization Settings**
-2. Set **Default Audience** to your API Identifier: `https://contextdb.tech`
-3. Click **Save**
+### The Root Cause: "Opaque" JWE Tokens
 
-This ensures that all access tokens are issued as signed JWTs by default, even if the client doesn't explicitly specify the audience.
+Even though JWE encryption is disabled in your API settings, Auth0 may still send a 5-part encrypted token (starting with `eyJhbGciOiJkaXIiLCJlbmMi...`). This happens when Auth0 issues an **"Opaque" Access Token** instead of a JWT Access Token. 
+
+In the Auth0 system, if a request doesn't explicitly state which API it wants to talk to, Auth0 provides a proprietary token (which looks like a 5-part JWE) that only Auth0's `/userinfo` endpoint can read. Your server fails because it expects a standard 3-part signed JWT.
+
+### The Solution: Set Tenant Default Audience
+
+Since the client (Claude/MCP) is the one initiating the request and might not be passing the audience parameter correctly in its internal fetch, you can force Auth0 to always issue a valid JWT for your API at the tenant level.
+
+**Steps:**
+
+1. **Get your API Identifier:**
+   - Go to your Auth0 Dashboard → **Applications** → **APIs**
+   - Find your API (e.g., `https://contextdb.tech` as seen in your logs)
+   - Copy the **Identifier** string exactly
+
+2. **Set the Default Audience:**
+   - Go to Dashboard → **Settings** → **Tenant Settings** (the gear icon on the left sidebar)
+   - Click the **General** tab
+   - Scroll down to the **API Authorization Settings** section
+   - Find the field labeled **Default Audience**
+   - Paste your API Identifier there (e.g., `https://contextdb.tech`)
+   - Click **Save**
+
+This ensures that all access tokens are issued as signed JWTs by default, even if the client doesn't explicitly specify the audience parameter.
 
 ## Step 8: Get Auth0 Credentials
 
@@ -197,11 +218,15 @@ This error means the token Claude is sending is not a valid **signed JWT (JWS)**
 
    **The most common cause is missing or incorrect `audience` parameter!**
    
-   a. **Set Default Audience (MOST IMPORTANT):**
-      - Go to **Settings** → **API Authorization Settings**
+   **Root Cause:** Auth0 issues "Opaque" JWE tokens (5-part encrypted tokens) when the audience parameter is missing. These look like JWE tokens but are actually proprietary Auth0 tokens that only work with Auth0's `/userinfo` endpoint.
+   
+   a. **Set Default Audience in Tenant Settings (MOST IMPORTANT):**
+      - Go to **Settings** → **Tenant Settings** → **General** tab
+      - Scroll to **API Authorization Settings** section
       - Set **Default Audience** to your API Identifier: `https://contextdb.tech`
       - Click **Save**
-      - This ensures Auth0 issues signed JWTs even if client doesn't specify audience
+      - This ensures Auth0 issues signed JWTs (3-part JWS tokens) even if client doesn't specify audience
+      - **This is the definitive solution** - it forces Auth0 to always issue valid JWT tokens for your API
    
    b. **Verify API Settings:**
       - Go to **Applications** → **APIs** → Your API → **Settings**
