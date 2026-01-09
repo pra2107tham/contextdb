@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { NavBar } from '@/components/NavBar'
 
 export const metadata: Metadata = {
   title: 'ContextDB - Context Checkpointing for Claude',
@@ -13,7 +14,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-gray-50 text-gray-900">
+        {/* @ts-expect-error Async Server Component */}
+        <NavBar />
+        {children}
+      </body>
     </html>
   )
 }
