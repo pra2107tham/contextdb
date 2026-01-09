@@ -22,17 +22,24 @@ export const handleAuthError = (
       status: err.status,
       authorizationHeader: req.headers.authorization ? 'present' : 'missing',
       queryParams: Object.keys(req.query),
+      path: req.path,
     })
     
     // Return 401 with WWW-Authenticate header pointing to Auth0
-    // This tells Claude where to authenticate
+    // Per RFC 6750 and MCP spec, this tells Claude where to authenticate
+    // Claude should then initiate OAuth flow with Auth0
     const authUrl = `${config.auth0.issuerBaseURL}/authorize`
-    res.setHeader('WWW-Authenticate', `Bearer realm="${config.auth0.issuerBaseURL}", authorization_uri="${authUrl}"`)
+    const tokenUrl = `${config.auth0.issuerBaseURL}/oauth/token`
     
+    // Set WWW-Authenticate header per RFC 6750
+    res.setHeader('WWW-Authenticate', `Bearer realm="${config.auth0.issuerBaseURL}", authorization_uri="${authUrl}", token_uri="${tokenUrl}"`)
+    
+    // Return 401 with error details per OAuth 2.1 spec
     return res.status(401).json({
       error: 'invalid_request',
       error_description: 'Missing or invalid access token. Please complete OAuth flow.',
       authorization_uri: authUrl,
+      token_uri: tokenUrl,
     })
   }
   if (err instanceof UnauthorizedError) {

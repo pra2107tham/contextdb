@@ -38,7 +38,10 @@ app.get('/health', (_req, res) => {
 })
 
 // OAuth discovery endpoint for Claude
+// Per RFC 8414 and MCP spec, this tells Claude where to authenticate
 app.get('/.well-known/oauth-protected-resource', (_req, res) => {
+  console.log('OAuth discovery request from:', _req.headers['user-agent'])
+  res.setHeader('Content-Type', 'application/json')
   res.json({
     authorization_servers: [config.auth0.issuerBaseURL],
   })
