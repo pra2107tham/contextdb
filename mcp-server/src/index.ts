@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import path from 'path'
 import { config } from './config'
-import { checkJwt, handleAuthError } from './auth'
+import { checkJwt } from './auth'
 import { createContextDbServer } from './mcpServer'
 
 // Import MCP SDK transports using require with resolved path since subpath exports aren't available
@@ -146,9 +146,6 @@ app.post('/messages', async (req, res) => {
     }
   }
 })
-
-// Error handling middleware (must be registered after routes)
-app.use(handleAuthError)
 
 const PORT = config.port
 app.listen(PORT, (error?: unknown) => {
