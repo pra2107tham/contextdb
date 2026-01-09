@@ -110,9 +110,11 @@ app.get('/.well-known/oauth-authorization-server', (req, res) => {
 
 // Dynamic Client Registration endpoint (RFC 7591)
 // Claude uses this to register itself as an OAuth client
+// Note: Claude may register directly with Auth0, but we provide this as a fallback/proxy
 app.post('/register', async (req, res) => {
   console.log('📝 [DCR] Dynamic Client Registration request received:', {
     body: req.body,
+    headers: req.headers,
     timestamp: new Date().toISOString(),
   })
   
@@ -121,6 +123,7 @@ app.post('/register', async (req, res) => {
     const auth0RegisterUrl = `${config.auth0.issuerBaseURL}/oidc/register`
     
     console.log('📝 [DCR] Proxying to Auth0:', auth0RegisterUrl)
+    console.log('📝 [DCR] Registration payload:', JSON.stringify(req.body, null, 2))
     
     const response = await fetch(auth0RegisterUrl, {
       method: 'POST',
@@ -131,16 +134,32 @@ app.post('/register', async (req, res) => {
       body: JSON.stringify(req.body),
     })
     
-    const responseData = await response.json()
+    const responseText = await response.text()
+    let responseData
+    try {
+      responseData = JSON.parse(responseText)
+    } catch (e) {
+      responseData = { raw: responseText }
+    }
     
     console.log('📝 [DCR] Auth0 response:', {
       status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
       data: responseData,
     })
     
+    // Forward Auth0's response headers
+    response.headers.forEach((value, key) => {
+      res.setHeader(key, value)
+    })
+    
     res.status(response.status).json(responseData)
-  } catch (error) {
-    console.error('❌ [DCR] Error proxying registration:', error)
+  } catch (error: any) {
+    console.error('❌ [DCR] Error proxying registration:', {
+      error: error.message,
+      stack: error.stack,
+    })
     res.status(500).json({
       error: 'registration_failed',
       error_description: 'Failed to register client with Auth0',
