@@ -211,13 +211,37 @@ app.post(
   '/mcp',
   // Log BEFORE authentication check
   (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization
+    const tokenPreview = authHeader 
+      ? (authHeader.startsWith('Bearer ') 
+          ? `Bearer ${authHeader.substring(7, 30)}...` 
+          : authHeader.substring(0, 30) + '...')
+      : 'missing'
+    
     console.log('📨 [MCP ENDPOINT] Request received BEFORE auth check:', {
-      hasAuthHeader: !!req.headers.authorization,
-      authHeaderPrefix: req.headers.authorization?.substring(0, 20) || 'none',
+      hasAuthHeader: !!authHeader,
+      authHeaderPreview: tokenPreview,
+      authHeaderLength: authHeader?.length || 0,
       contentType: req.headers['content-type'],
       bodySize: req.body ? JSON.stringify(req.body).length : 0,
       timestamp: new Date().toISOString(),
     })
+    
+    // Log full token structure (safely) for debugging
+    if (authHeader) {
+      try {
+        const parts = authHeader.replace(/^Bearer /, '').split('.')
+        console.log('🔍 [MCP ENDPOINT] Token structure:', {
+          hasBearerPrefix: authHeader.startsWith('Bearer '),
+          tokenParts: parts.length,
+          partLengths: parts.map(p => p.length),
+          isJWT: parts.length === 3,
+        })
+      } catch (e) {
+        console.log('🔍 [MCP ENDPOINT] Could not parse token structure')
+      }
+    }
+    
     next()
   },
   // Authentication middleware
@@ -281,13 +305,37 @@ app.post(
 
 // SSE endpoint for deprecated HTTP+SSE MCP transport (Claude-compatible)
 app.get('/sse', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.log('Received GET /sse from MCP client', {
-    headers: {
-      authorization: req.headers.authorization ? 'present' : 'missing',
-      'x-authorization': req.headers['x-authorization'] ? 'present' : 'missing',
-    },
+  const authHeader = req.headers.authorization
+  const tokenPreview = authHeader 
+    ? (authHeader.startsWith('Bearer ') 
+        ? `Bearer ${authHeader.substring(7, 30)}...` 
+        : authHeader.substring(0, 30) + '...')
+    : 'missing'
+  
+  console.log('🔍 [SSE ENDPOINT] Request received BEFORE auth check:', {
+    hasAuthHeader: !!authHeader,
+    authHeaderPreview: tokenPreview,
+    authHeaderLength: authHeader?.length || 0,
+    'x-authorization': req.headers['x-authorization'] ? 'present' : 'missing',
     query: req.query,
+    timestamp: new Date().toISOString(),
   })
+  
+  // Log full token structure (safely) for debugging
+  if (authHeader) {
+    try {
+      const parts = authHeader.replace(/^Bearer /, '').split('.')
+      console.log('🔍 [SSE ENDPOINT] Token structure:', {
+        hasBearerPrefix: authHeader.startsWith('Bearer '),
+        tokenParts: parts.length,
+        partLengths: parts.map(p => p.length),
+        isJWT: parts.length === 3,
+      })
+    } catch (e) {
+      console.log('🔍 [SSE ENDPOINT] Could not parse token structure')
+    }
+  }
+  
   next()
 }, checkJwt, async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   try {
@@ -377,6 +425,45 @@ app.use(
     // Handle express-oauth2-jwt-bearer errors
     // The library sets err.status and err.headers automatically
     if (err instanceof InvalidRequestError || err instanceof UnauthorizedError) {
+      const authHeader = req.headers.authorization
+      const tokenPreview = authHeader 
+        ? (authHeader.startsWith('Bearer ') 
+            ? `Bearer ${authHeader.substring(7, 50)}...` 
+            : authHeader.substring(0, 50) + '...')
+        : 'missing'
+      
+      // Try to decode JWT header/payload for debugging (without verification)
+      let tokenInfo: any = {}
+      if (authHeader) {
+        try {
+          const token = authHeader.replace(/^Bearer /, '')
+          const parts = token.split('.')
+          if (parts.length === 3) {
+            // Decode header and payload (base64url)
+            const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString())
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString())
+            tokenInfo = {
+              header: { alg: header.alg, typ: header.typ, kid: header.kid },
+              payload: {
+                iss: payload.iss,
+                aud: payload.aud,
+                sub: payload.sub,
+                exp: payload.exp,
+                iat: payload.iat,
+              },
+              expectedIssuer: config.auth0.issuerBaseURL,
+              expectedAudience: config.auth0.audience,
+              issuerMatch: payload.iss === config.auth0.issuerBaseURL,
+              audienceMatch: payload.aud === config.auth0.audience || (Array.isArray(payload.aud) && payload.aud.includes(config.auth0.audience)),
+            }
+          } else {
+            tokenInfo = { error: 'Token is not a JWT (does not have 3 parts)' }
+          }
+        } catch (e: any) {
+          tokenInfo = { error: `Could not decode token: ${e.message}` }
+        }
+      }
+      
       console.log('🔒 [AUTH ERROR] Authentication failed:', {
         errorType: err instanceof InvalidRequestError ? 'InvalidRequestError' : 'UnauthorizedError',
         errorMessage: err.message,
@@ -384,8 +471,10 @@ app.use(
         errorHeaders: err.headers,
         requestPath: req.path,
         requestMethod: req.method,
-        hasAuthHeader: !!req.headers.authorization,
-        authHeaderValue: req.headers.authorization ? req.headers.authorization.substring(0, 30) + '...' : 'none',
+        hasAuthHeader: !!authHeader,
+        authHeaderPreview: tokenPreview,
+        authHeaderLength: authHeader?.length || 0,
+        tokenInfo,
         timestamp: new Date().toISOString(),
       })
       

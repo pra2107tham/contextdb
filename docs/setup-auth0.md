@@ -149,6 +149,29 @@ This error occurs because dynamically registered clients are third-party applica
 - Check that the issuer base URL is correct
 - Ensure your MCP server is using the correct environment variables
 
+### "Invalid Compact JWS" Error
+
+This error means the token Claude is sending is not a valid JWT. Possible causes:
+
+1. **Auth0 API not configured for JWT tokens:**
+   - Go to **Applications** → **APIs** → Your API
+   - Ensure **"Enable JWT Access Tokens"** is enabled (should be default)
+   - If using opaque tokens, switch to JWT tokens
+
+2. **Token from wrong issuer:**
+   - Check the token's `iss` claim matches your Auth0 issuer base URL
+   - Verify Claude is using the correct authorization server
+
+3. **Malformed token:**
+   - Check server logs for detailed token structure
+   - Verify token has 3 parts (header.payload.signature)
+   - Ensure token is sent as `Bearer <token>` in Authorization header
+
+**To debug:**
+- Check MCP server logs for detailed token information
+- Verify Auth0 API settings match your environment variables
+- Test token manually using Auth0's token endpoint
+
 ## Free Tier Limits
 
 Auth0 free tier includes:
