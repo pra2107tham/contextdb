@@ -1,6 +1,11 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp'
 import * as z from 'zod'
+import path from 'path'
 import { supabase } from './db/client'
+
+// Import McpServer using require with resolved path since the subpath export isn't available
+const sdkPath = require.resolve('@modelcontextprotocol/sdk/package.json')
+const sdkRoot = path.dirname(path.dirname(path.dirname(sdkPath)))
+const { McpServer } = require(path.join(sdkRoot, 'dist/cjs/server/mcp'))
 
 type GetUserIdForSession = (sessionId?: string) => string | undefined
 
