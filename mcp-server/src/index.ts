@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import path from 'path'
 import { config } from './config'
-import { checkJwt } from './auth'
+import { checkJwt, handleAuthError } from './auth'
 import { createContextDbServer } from './mcpServer'
 
 // Import SSEServerTransport using require with resolved path since the subpath export isn't available
@@ -45,8 +45,16 @@ app.get('/.well-known/oauth-protected-resource', (_req, res) => {
 })
 
 // SSE endpoint for deprecated HTTP+SSE MCP transport (Claude-compatible)
-app.get('/sse', checkJwt, async (req, res) => {
-  console.log('Received GET /sse from MCP client')
+app.get('/sse', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.log('Received GET /sse from MCP client', {
+    headers: {
+      authorization: req.headers.authorization ? 'present' : 'missing',
+      'x-authorization': req.headers['x-authorization'] ? 'present' : 'missing',
+    },
+    query: req.query,
+  })
+  next()
+}, checkJwt, handleAuthError, async (req: express.Request, res: express.Response) => {
   try {
     const transport = new SSEServerTransport('/messages', res)
     const sessionId = transport.sessionId
