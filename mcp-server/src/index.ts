@@ -5,7 +5,7 @@ import { config } from './config'
 import { checkJwt } from './auth'
 import { createContextDbServer } from './mcpServer'
 import { InvalidRequestError, UnauthorizedError } from 'express-oauth2-jwt-bearer'
-import { syncAuth0UserToSupabase } from './auth/userSync'
+import { getSupabaseUserIdFromAuth0 } from './auth/userSync'
 
 // Import MCP SDK transports using require with resolved path since subpath exports aren't available
 // require.resolve resolves to dist/cjs/package.json, so we go up 2 levels to get to SDK root
@@ -263,13 +263,10 @@ app.post(
     const auth0Email = auth?.payload?.email as string | undefined
     const auth0Name = auth?.payload?.name as string | undefined
 
-    // Sync Auth0 user to Supabase and store Supabase user ID in request
+    // Get Supabase user ID from Auth0 user ID
+    // Auth0 Actions have already verified email exists and stored auth0_user_id
     if (auth0Sub) {
-      const supabaseUserId = await syncAuth0UserToSupabase(
-        auth0Sub,
-        auth0Email,
-        auth0Name,
-      )
+      const supabaseUserId = await getSupabaseUserIdFromAuth0(auth0Sub)
       if (supabaseUserId) {
         // Store Supabase user ID in request for tool handlers to use
         ;(req as any).supabaseUserId = supabaseUserId
@@ -280,7 +277,11 @@ app.post(
           timestamp: new Date().toISOString(),
         })
       } else {
-        console.error(`Failed to sync Auth0 user ${auth0Sub} to Supabase`)
+        console.error(`Failed to find Supabase user for Auth0 user ${auth0Sub}`)
+        return res.status(500).json({
+          error: 'user_not_found',
+          error_description: 'User account not found. Please ensure you have created a ContextDB account.',
+        })
       }
     }
     next()
@@ -353,28 +354,29 @@ app.get('/sse', (req: express.Request, res: express.Response, next: express.Next
     const sessionId = transport.sessionId
     transports[sessionId] = transport
 
-    // Capture Auth0 user info and sync to Supabase
+    // Get Supabase user ID from Auth0 user ID
+    // Auth0 Actions have already verified email exists and stored auth0_user_id
     const auth: any = (req as any).auth
     const auth0Sub = auth?.payload?.sub as string | undefined
-    const auth0Email = auth?.payload?.email as string | undefined
-    const auth0Name = auth?.payload?.name as string | undefined
 
     if (auth0Sub) {
-      // Sync Auth0 user to Supabase and get Supabase user ID
-      const supabaseUserId = await syncAuth0UserToSupabase(
-        auth0Sub,
-        auth0Email,
-        auth0Name,
-      )
+      const supabaseUserId = await getSupabaseUserIdFromAuth0(auth0Sub)
 
       if (supabaseUserId) {
-        // Store Supabase user ID (not Auth0 sub) for this session
+        // Store Supabase user ID for this session
         sessionUserIds[sessionId] = supabaseUserId
         console.log(
-          `Synced Auth0 user ${auth0Sub} to Supabase user ${supabaseUserId} for session ${sessionId}`,
+          `Found Supabase user ${supabaseUserId} for Auth0 user ${auth0Sub} (session ${sessionId})`,
         )
       } else {
-        console.error(`Failed to sync Auth0 user ${auth0Sub} to Supabase`)
+        console.error(`Failed to find Supabase user for Auth0 user ${auth0Sub}`)
+        if (!res.headersSent) {
+          res.status(500).json({
+            error: 'user_not_found',
+            error_description: 'User account not found. Please ensure you have created a ContextDB account.',
+          })
+        }
+        return
       }
     }
 

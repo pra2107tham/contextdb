@@ -1,60 +1,41 @@
 import { supabase } from '../db/client'
 
 /**
- * Syncs Auth0 user to Supabase users table
- * Returns the Supabase user ID (UUID) for the Auth0 user
+ * Gets Supabase user ID from Auth0 user ID
+ * Auth0 Actions (Post-User-Registration and Post-Login) have already:
+ * 1. Verified the email exists in Supabase
+ * 2. Stored the auth0_user_id in the users table
+ * 
+ * So we just need to find the user by auth0_user_id
  * 
  * @param auth0Sub - Auth0 user subject (e.g., "auth0|123456" or "google-oauth2|123456")
- * @param email - User's email from Auth0 token
- * @param name - User's name from Auth0 token (optional)
- * @returns Supabase user ID (UUID) or null if sync failed
+ * @returns Supabase user ID (UUID) or null if not found
  */
-export async function syncAuth0UserToSupabase(
+export async function getSupabaseUserIdFromAuth0(
   auth0Sub: string,
-  email?: string,
-  name?: string,
 ): Promise<string | null> {
   try {
-    // First, try to find existing user by email (if email is available)
-    if (email) {
-      const { data: existingUser, error: findError } = await supabase
-        .from('users')
-        .select('id, email')
-        .eq('email', email.toLowerCase())
-        .maybeSingle()
-
-      if (findError) {
-        console.error('Error finding user by email:', findError)
-      } else if (existingUser) {
-        // User exists, return their Supabase ID
-        console.log(`Found existing Supabase user for Auth0 user ${auth0Sub}: ${existingUser.id}`)
-        return existingUser.id
-      }
-    }
-
-    // User doesn't exist, create new user in Supabase
-    // Use email from Auth0, or generate a placeholder if not available
-    const userEmail = email || `${auth0Sub}@auth0.local`
-    const userName = name || null
-
-    const { data: newUser, error: createError } = await supabase
+    // Find user by auth0_user_id (set by Auth0 Actions)
+    const { data: user, error } = await supabase
       .from('users')
-      .insert({
-        email: userEmail.toLowerCase(),
-        name: userName,
-      })
-      .select('id')
-      .single()
+      .select('id, email, auth0_user_id')
+      .eq('auth0_user_id', auth0Sub)
+      .maybeSingle()
 
-    if (createError) {
-      console.error('Error creating Supabase user:', createError)
+    if (error) {
+      console.error('Error finding user by auth0_user_id:', error)
       return null
     }
 
-    console.log(`Created new Supabase user for Auth0 user ${auth0Sub}: ${newUser.id}`)
-    return newUser.id
+    if (!user) {
+      console.error(`User with auth0_user_id ${auth0Sub} not found in Supabase`)
+      return null
+    }
+
+    console.log(`Found Supabase user for Auth0 user ${auth0Sub}: ${user.id}`)
+    return user.id
   } catch (error) {
-    console.error('Unexpected error syncing Auth0 user to Supabase:', error)
+    console.error('Unexpected error getting Supabase user from Auth0:', error)
     return null
   }
 }
