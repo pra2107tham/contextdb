@@ -112,6 +112,7 @@ app.get('/.well-known/oauth-authorization-server', (req, res) => {
   })
   
   // Return Auth0's authorization server metadata
+  // CRITICAL: Include audience so Claude knows which API identifier to use
   const metadata = {
     issuer: config.auth0.issuerBaseURL,
     authorization_endpoint: `${config.auth0.issuerBaseURL}/authorize`,
@@ -122,6 +123,9 @@ app.get('/.well-known/oauth-authorization-server', (req, res) => {
     grant_types_supported: ['authorization_code', 'refresh_token'],
     token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
     scopes_supported: ['openid', 'profile', 'email', 'contextdb:read', 'contextdb:write'],
+    // Include audience in metadata (non-standard but helpful for clients)
+    // Claude should use this audience parameter when requesting tokens
+    audience: config.auth0.audience,
   }
   
   console.log('🔍 [OAUTH METADATA] Sending response:', metadata)

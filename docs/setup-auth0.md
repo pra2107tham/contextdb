@@ -100,7 +100,17 @@ If you can't find the option in the dashboard, use the Management API:
 
 > **Note:** APIs in Auth0 don't have callback URLs. With Dynamic Client Registration enabled, Claude.ai will dynamically register as a client and handle its own callback URLs during the OAuth flow.
 
-## Step 7: Get Auth0 Credentials
+## Step 7: Set Default Audience (CRITICAL for JWT Tokens)
+
+**This is critical!** If the `audience` parameter is missing or incorrect, Auth0 will issue encrypted JWT tokens (JWE) instead of signed JWT tokens (JWS).
+
+1. Go to **Settings** → **API Authorization Settings**
+2. Set **Default Audience** to your API Identifier: `https://contextdb.tech`
+3. Click **Save**
+
+This ensures that all access tokens are issued as signed JWTs by default, even if the client doesn't explicitly specify the audience.
+
+## Step 8: Get Auth0 Credentials
 
 1. Go to **Applications** → **APIs** → Your API
 2. Note these values:
@@ -113,7 +123,7 @@ If you can't find the option in the dashboard, use the Management API:
    - `AUTH0_AUDIENCE=https://contextdb.tech`
    - `AUTH0_ISSUER_BASE_URL=https://your-tenant.auth0.com`
 
-## Step 8: Test OAuth Discovery Endpoint
+## Step 9: Test OAuth Discovery Endpoint
 
 Once your MCP server is running, test the discovery endpoint:
 
@@ -185,37 +195,44 @@ This error means the token Claude is sending is not a valid **signed JWT (JWS)**
 
 3. **If Auth0 is issuing JWE tokens even when encryption is disabled:**
 
-   **Check these settings:**
+   **The most common cause is missing or incorrect `audience` parameter!**
    
-   a. **Verify API Settings:**
+   a. **Set Default Audience (MOST IMPORTANT):**
+      - Go to **Settings** → **API Authorization Settings**
+      - Set **Default Audience** to your API Identifier: `https://contextdb.tech`
+      - Click **Save**
+      - This ensures Auth0 issues signed JWTs even if client doesn't specify audience
+   
+   b. **Verify API Settings:**
       - Go to **Applications** → **APIs** → Your API → **Settings**
       - Ensure **"Enable JWT Access Tokens"** is checked
       - Ensure **"Encrypt the signed access_token"** is **UNCHECKED** (disabled)
       - Verify **"Signing Algorithm"** is `RS256`
       - Click **"Save"** even if nothing changed
    
-   b. **Check for Auth0 Actions:**
+   c. **Check for Auth0 Actions:**
       - Go to **Actions** → **Flows** → **Login**
       - Check if any Actions are modifying tokens or forcing encryption
       - Temporarily disable Actions to test
    
-   c. **Check Tenant Settings:**
+   d. **Check Tenant Settings:**
       - Go to **Settings** → **Advanced** → **OAuth**
       - Look for any tenant-level token encryption policies
       - Check if there are any organization-level policies
    
-   d. **Test Token Manually:**
-      - Use Auth0's token endpoint to get a test token
+   e. **Test Token Manually:**
+      - Use Auth0's token endpoint with the correct `audience` parameter
       - Decode the token header to verify it's JWS (signed) not JWE (encrypted)
-      - If test token is JWS but Claude's token is JWE, the issue is in the OAuth flow
+      - If test token is JWS but Claude's token is JWE, Claude isn't sending the audience
    
-   e. **Recreate the API (Last Resort):**
+   f. **Recreate the API (Last Resort):**
       - Delete the existing API
       - Create a new API with the same identifier
       - Ensure JWT Access Tokens are enabled and encryption is disabled
       - Re-enable DCR and configure scopes
+      - **Set Default Audience** in tenant settings
    
-   f. **Check Dynamic Client Registration:**
+   g. **Check Dynamic Client Registration:**
       - When Claude registers via DCR, it might be requesting encrypted tokens
       - Check the DCR registration request in Auth0 logs
       - Verify Claude isn't requesting `token_endpoint_auth_method` that forces encryption
