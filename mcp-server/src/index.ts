@@ -1,16 +1,18 @@
 import express from 'express'
 import cors from 'cors'
 import path from 'path'
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp'
 import { config } from './config'
 import { checkJwt, handleAuthError } from './auth'
 import { createContextDbServer } from './mcpServer'
 
-// Import SSEServerTransport using require with resolved path since the subpath export isn't available
+// Import MCP SDK transports using require with resolved path since subpath exports aren't available
 // require.resolve resolves to dist/cjs/package.json, so we go up 2 levels to get to SDK root
 const sdkPath = require.resolve('@modelcontextprotocol/sdk/package.json')
 const sdkRoot = path.dirname(path.dirname(path.dirname(sdkPath)))
 const { SSEServerTransport } = require(path.join(sdkRoot, 'dist/cjs/server/sse'))
+const { StreamableHTTPServerTransport } = require(
+  path.join(sdkRoot, 'dist/cjs/server/streamableHttp'),
+)
 
 // Map of sessionId -> SSE transport
 const transports: Record<string, InstanceType<typeof SSEServerTransport>> = {}
