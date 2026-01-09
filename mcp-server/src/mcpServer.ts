@@ -65,7 +65,12 @@ export function createContextDbServer(getUserIdForSession: GetUserIdForSession) 
       if (existingError) {
         console.error(existingError)
         return {
-          content: [{ type: 'text', text: `Error checking existing context: ${existingError.message}` }],
+          content: [
+            {
+              type: 'text',
+              text: `Error checking existing context: ${existingError.message}`,
+            },
+          ],
         }
       }
 
@@ -75,7 +80,7 @@ export function createContextDbServer(getUserIdForSession: GetUserIdForSession) 
         }
       }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('contexts')
         .insert({
           user_id: userId,
@@ -102,7 +107,12 @@ export function createContextDbServer(getUserIdForSession: GetUserIdForSession) 
       }
 
       return {
-        structuredContent: { ...data, execution_time_ms: duration },
+        content: [
+          {
+            type: 'text',
+            text: `Created context '${name}' (v1) in ${duration}ms`,
+          },
+        ],
       }
     },
   )
@@ -142,7 +152,12 @@ export function createContextDbServer(getUserIdForSession: GetUserIdForSession) 
       }
 
       return {
-        structuredContent: data,
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
       }
     },
   )
@@ -183,7 +198,12 @@ export function createContextDbServer(getUserIdForSession: GetUserIdForSession) 
       }
 
       return {
-        structuredContent: { contexts: data ?? [] },
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ contexts: data ?? [] }, null, 2),
+          },
+        ],
       }
     },
   )
@@ -267,7 +287,12 @@ export function createContextDbServer(getUserIdForSession: GetUserIdForSession) 
       }
 
       return {
-        structuredContent: { name, version: newVersion },
+        content: [
+          {
+            type: 'text',
+            text: `Appended to context '${name}' (v${newVersion}).`,
+          },
+        ],
       }
     },
   )
@@ -323,7 +348,12 @@ export function createContextDbServer(getUserIdForSession: GetUserIdForSession) 
       }
 
       return {
-        structuredContent: { name, version: newVersion },
+        content: [
+          {
+            type: 'text',
+            text: `Updated context '${name}' (v${newVersion}).`,
+          },
+        ],
       }
     },
   )
@@ -364,15 +394,17 @@ export function createContextDbServer(getUserIdForSession: GetUserIdForSession) 
   // Resources: contexts as context://<name>
   server.registerResource(
     'contexts',
-    'context://{name}',
+    'context://',
     {
       title: 'ContextDB contexts',
       description: 'Saved contexts in ContextDB',
       mimeType: 'application/json',
     },
-    async (uri: URL, variables: any, extra: any) => {
+    async (uri: URL, extra: any) => {
       const userId = requireUserId(extra)
-      const name = variables?.name || uri.hostname // fallback
+      // Expect URIs like context://<name>
+      const raw = uri.hostname || uri.pathname.replace('/', '')
+      const name = decodeURIComponent(raw)
 
       const { data, error } = await supabase
         .from('contexts')
