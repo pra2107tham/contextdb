@@ -1,5 +1,5 @@
 const CLAUDE_CONNECTOR_URL =
-  process.env.NEXT_PUBLIC_MCP_SSE_URL || 'https://contextdb-production.up.railway.app/sse'
+  process.env.NEXT_PUBLIC_MCP_SSE_URL || 'https://contextdb-production.up.railway.app/mcp'
 const WEB_URL = process.env.NEXT_PUBLIC_WEB_URL || 'https://contextdb-web.vercel.app'
 
 export default function ConnectDocsPage() {
@@ -53,6 +53,11 @@ export default function ConnectDocsPage() {
             <div className="mt-2 rounded-md bg-gray-100 px-3 py-2 text-xs font-mono">
               {CLAUDE_CONNECTOR_URL}
             </div>
+            <p className="mt-1 text-xs text-gray-600">
+              Note: Use the <code className="rounded bg-gray-100 px-1 py-0.5">/mcp</code> endpoint
+              (not <code className="rounded bg-gray-100 px-1 py-0.5">/sse</code>) for better
+              compatibility with Claude.
+            </p>
           </li>
         </ol>
       </section>

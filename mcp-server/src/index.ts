@@ -200,12 +200,18 @@ app.get('/mcp', (req: express.Request, res: express.Response) => {
   })
   
   // Return endpoint information without requiring auth
+  // Include explicit authentication requirements
   res.json({
     endpoint: '/mcp',
     method: 'POST',
     transport: 'streamable-http',
-    authentication: 'oauth2',
-    authorization_server: config.auth0.issuerBaseURL,
+    authentication: {
+      type: 'oauth2',
+      authorization_server: config.auth0.issuerBaseURL,
+      audience: config.auth0.audience,
+      scopes: ['contextdb:read', 'contextdb:write'],
+      token_usage: 'Bearer token in Authorization header required for all requests',
+    },
   })
 })
 
