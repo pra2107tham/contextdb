@@ -73,11 +73,79 @@ app.get('/.well-known/oauth-protected-resource', (req, res) => {
   
   const response = {
     authorization_servers: [config.auth0.issuerBaseURL],
+    // Include registration endpoint for Dynamic Client Registration (RFC 7591)
+    registration_endpoint: `${config.auth0.issuerBaseURL}/oidc/register`,
   }
   
   console.log('🔍 [OAUTH DISCOVERY] Sending response:', response)
   res.setHeader('Content-Type', 'application/json')
   res.json(response)
+})
+
+// OAuth Authorization Server Metadata endpoint (RFC 8414)
+// Claude queries this to get OAuth server configuration
+app.get('/.well-known/oauth-authorization-server', (req, res) => {
+  console.log('🔍 [OAUTH METADATA] Request received:', {
+    userAgent: req.headers['user-agent'],
+    timestamp: new Date().toISOString(),
+  })
+  
+  // Return Auth0's authorization server metadata
+  const metadata = {
+    issuer: config.auth0.issuerBaseURL,
+    authorization_endpoint: `${config.auth0.issuerBaseURL}/authorize`,
+    token_endpoint: `${config.auth0.issuerBaseURL}/oauth/token`,
+    registration_endpoint: `${config.auth0.issuerBaseURL}/oidc/register`,
+    jwks_uri: `${config.auth0.issuerBaseURL}/.well-known/jwks.json`,
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
+    token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
+    scopes_supported: ['openid', 'profile', 'email', 'contextdb:read', 'contextdb:write'],
+  }
+  
+  console.log('🔍 [OAUTH METADATA] Sending response:', metadata)
+  res.setHeader('Content-Type', 'application/json')
+  res.json(metadata)
+})
+
+// Dynamic Client Registration endpoint (RFC 7591)
+// Claude uses this to register itself as an OAuth client
+app.post('/register', async (req, res) => {
+  console.log('📝 [DCR] Dynamic Client Registration request received:', {
+    body: req.body,
+    timestamp: new Date().toISOString(),
+  })
+  
+  try {
+    // Proxy the registration request to Auth0's DCR endpoint
+    const auth0RegisterUrl = `${config.auth0.issuerBaseURL}/oidc/register`
+    
+    console.log('📝 [DCR] Proxying to Auth0:', auth0RegisterUrl)
+    
+    const response = await fetch(auth0RegisterUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(req.body),
+    })
+    
+    const responseData = await response.json()
+    
+    console.log('📝 [DCR] Auth0 response:', {
+      status: response.status,
+      data: responseData,
+    })
+    
+    res.status(response.status).json(responseData)
+  } catch (error) {
+    console.error('❌ [DCR] Error proxying registration:', error)
+    res.status(500).json({
+      error: 'registration_failed',
+      error_description: 'Failed to register client with Auth0',
+    })
+  }
 })
 
 // HTTP-based MCP endpoint (preferred for Claude) using Streamable HTTP transport
