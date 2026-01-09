@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import path from 'path'
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp'
 import { config } from './config'
 import { checkJwt, handleAuthError } from './auth'
 import { createContextDbServer } from './mcpServer'
@@ -46,6 +47,36 @@ app.get('/.well-known/oauth-protected-resource', (_req, res) => {
     authorization_servers: [config.auth0.issuerBaseURL],
   })
 })
+
+// HTTP-based MCP endpoint (preferred for Claude) using Streamable HTTP transport
+// Protect this with OAuth (checkJwt)
+app.post(
+  '/mcp',
+  checkJwt,
+  async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    try {
+      // sessionIdGenerator and enableJsonResponse are recommended settings
+      const transport = new StreamableHTTPServerTransport({
+        enableJsonResponse: true,
+      })
+
+      // Connect our MCP server to the transport
+      const server = createContextDbServer(() => {
+        // For HTTP transport, we don't use session-based mapping, instead
+        // we rely on req.auth from checkJwt middleware inside tool handlers if needed.
+        // For now, tools use the Auth0 subject from SSE sessions only.
+        return undefined
+      })
+
+      // Handle the HTTP request via MCP transport
+      await server.connect(transport)
+      await transport.handleRequest(req as any, res, (req as any).body)
+    } catch (err) {
+      console.error('Error handling /mcp request:', err)
+      next(err)
+    }
+  },
+)
 
 // SSE endpoint for deprecated HTTP+SSE MCP transport (Claude-compatible)
 app.get('/sse', (req: express.Request, res: express.Response, next: express.NextFunction) => {
